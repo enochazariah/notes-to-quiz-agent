@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: notes-to-quiz-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: AWS_BEARER_TOKEN_BEDROCK
+        sync: false          # paste the real key in the Render dashboard, never in this file
+      - key: AWS_REGION
+        value: us-east-1     # change to the region where your key and model live
+      - key: BEDROCK_MODEL_ID
+        value: us.anthropic.claude-sonnet-4-6
+      - key: ACCESS_CODE
+        sync: false          # optional: short code for your supervisor
