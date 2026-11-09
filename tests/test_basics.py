@@ -1,6 +1,8 @@
 import io
+import os
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
 
@@ -40,6 +42,38 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual((s.aws_region, s.bedrock_model_id, s.max_pdf_mb), (DEFAULT_REGION, DEFAULT_MODEL_ID, 25))
         self.assertEqual(load_settings({"AWS_DEFAULT_REGION": "af-south-1"}).aws_region, "af-south-1")
         self.assertEqual(load_settings({"AWS_REGION": "", "AWS_DEFAULT_REGION": ""}).aws_region, DEFAULT_REGION)
+
+    def test_streamlit_bedrock_secrets_override_process_environment(self):
+        secrets = {
+            "AWS_BEARER_TOKEN_BEDROCK": "cloud-test-token",
+            "AWS_REGION": "eu-north-1",
+            "BEDROCK_MODEL_ID": "eu.test-model",
+        }
+        environment = {
+            "AWS_BEARER_TOKEN_BEDROCK": "environment-test-token",
+            "AWS_REGION": "us-east-1",
+            "BEDROCK_MODEL_ID": "us.test-model",
+        }
+        with patch("dotenv.load_dotenv"), patch.dict(os.environ, environment, clear=True), \
+                patch("quizagent.config._streamlit_bedrock_settings", return_value=secrets):
+            settings = load_settings()
+        self.assertTrue(settings.bedrock_token == secrets["AWS_BEARER_TOKEN_BEDROCK"])
+        self.assertEqual((settings.aws_region, settings.bedrock_model_id),
+                         (secrets["AWS_REGION"], secrets["BEDROCK_MODEL_ID"]))
+
+    def test_process_environment_fills_streamlit_secret_gaps(self):
+        environment = {
+            "AWS_BEARER_TOKEN_BEDROCK": "environment-test-token",
+            "AWS_REGION": "us-east-1",
+            "BEDROCK_MODEL_ID": "us.test-model",
+        }
+        with patch("dotenv.load_dotenv"), patch.dict(os.environ, environment, clear=True), \
+                patch("quizagent.config._streamlit_bedrock_settings",
+                      return_value={"AWS_REGION": "eu-north-1"}):
+            settings = load_settings()
+        self.assertTrue(settings.bedrock_token == environment["AWS_BEARER_TOKEN_BEDROCK"])
+        self.assertEqual((settings.aws_region, settings.bedrock_model_id),
+                         ("eu-north-1", environment["BEDROCK_MODEL_ID"]))
 
     def test_bad_int_falls_back(self):
         self.assertEqual(load_settings({"MAX_PDF_MB": "abc"}).max_pdf_mb, 25)

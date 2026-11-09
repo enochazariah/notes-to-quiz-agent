@@ -1,4 +1,4 @@
-"""Settings from the environment (.env locally, Render's Environment tab in production)."""
+"""Settings from Streamlit secrets, environment variables, or local .env."""
 from __future__ import annotations
 
 import os
@@ -11,6 +11,7 @@ DEFAULT_REGION = "us-east-1"
 # inference profile ("us." prefix). Use the prefix that matches your region (us., eu., apac.,
 # global.), or run scripts/check_bedrock.py to list what your account can use.
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
+_BEDROCK_SETTINGS = ("AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION", "BEDROCK_MODEL_ID")
 
 
 def _int(env: Mapping[str, str], name: str, default: int) -> int:
@@ -22,6 +23,16 @@ def _int(env: Mapping[str, str], name: str, default: int) -> int:
 
 def _str(env: Mapping[str, str], name: str, default: str = "") -> str:
     return (env.get(name) or "").strip() or default
+
+
+def _streamlit_bedrock_settings() -> Mapping[str, str]:
+    import streamlit as st
+    from streamlit.errors import StreamlitSecretNotFoundError
+
+    try:
+        return {name: st.secrets[name] for name in _BEDROCK_SETTINGS if name in st.secrets}
+    except StreamlitSecretNotFoundError:
+        return {}
 
 
 @dataclass(frozen=True)
@@ -48,11 +59,17 @@ class Settings:
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+    """Load settings; Streamlit secrets override environment and .env values.
+
+    An explicit mapping is used as-is, which keeps tests and other callers isolated.
+    """
     if env is None:
         from dotenv import load_dotenv
 
         load_dotenv()  # real environment variables (Render) win over .env
-        env = os.environ
+        merged_env = dict(os.environ)
+        merged_env.update(_streamlit_bedrock_settings())
+        env = merged_env
     return Settings(
         bedrock_token=_str(env, "AWS_BEARER_TOKEN_BEDROCK"),
         aws_region=_str(env, "AWS_REGION") or _str(env, "AWS_DEFAULT_REGION") or DEFAULT_REGION,
